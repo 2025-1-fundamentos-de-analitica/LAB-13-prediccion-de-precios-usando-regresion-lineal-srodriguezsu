@@ -31,7 +31,7 @@ def split_features_target(df):
 
 
 def build_regression_pipeline():
-    categorical = ['Fuel_Type', 'Selling_Type', 'Transmission']
+    categorical = ['Fuel_Type', 'Selling_type', 'Transmission']
     numerical = ['Present_Price', 'Driven_kms', 'Owner', 'Age']
 
     preprocessing = ColumnTransformer(transformers=[
@@ -61,7 +61,7 @@ def perform_grid_search(pipeline, x_train, y_train):
     return grid_search
 
 
-def calculate_regression_metrics(dataset_name, y_true, y_pred): 
+def calculate_regression_metrics(dataset_name, y_true, y_pred):
     return {
         "type": "metrics",
         "dataset": dataset_name,
