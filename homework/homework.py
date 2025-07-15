@@ -1,63 +1,132 @@
-#
-# En este dataset se desea pronosticar el precio de vhiculos usados. El dataset
-# original contiene las siguientes columnas:
-#
-# - Car_Name: Nombre del vehiculo.
-# - Year: Año de fabricación.
-# - Selling_Price: Precio de venta.
-# - Present_Price: Precio actual.
-# - Driven_Kms: Kilometraje recorrido.
-# - Fuel_type: Tipo de combustible.
-# - Selling_Type: Tipo de vendedor.
-# - Transmission: Tipo de transmisión.
-# - Owner: Número de propietarios.
-#
-# El dataset ya se encuentra dividido en conjuntos de entrenamiento y prueba
-# en la carpeta "files/input/".
-#
-# Los pasos que debe seguir para la construcción de un modelo de
-# pronostico están descritos a continuación.
-#
-#
-# Paso 1.
-# Preprocese los datos.
-# - Cree la columna 'Age' a partir de la columna 'Year'.
-#   Asuma que el año actual es 2021.
-# - Elimine las columnas 'Year' y 'Car_Name'.
-#
-#
-# Paso 2.
-# Divida los datasets en x_train, y_train, x_test, y_test.
-#
-#
-# Paso 3.
-# Cree un pipeline para el modelo de clasificación. Este pipeline debe
-# contener las siguientes capas:
-# - Transforma las variables categoricas usando el método
-#   one-hot-encoding.
-# - Escala las variables numéricas al intervalo [0, 1].
-# - Selecciona las K mejores entradas.
-# - Ajusta un modelo de regresion lineal.
-#
-#
-# Paso 4.
-# Optimice los hiperparametros del pipeline usando validación cruzada.
-# Use 10 splits para la validación cruzada. Use el error medio absoluto
-# para medir el desempeño modelo.
-#
-#
-# Paso 5.
-# Guarde el modelo (comprimido con gzip) como "files/models/model.pkl.gz".
-# Recuerde que es posible guardar el modelo comprimido usanzo la libreria gzip.
-#
-#
-# Paso 6.
-# Calcule las metricas r2, error cuadratico medio, y error absoluto medio
-# para los conjuntos de entrenamiento y prueba. Guardelas en el archivo
-# files/output/metrics.json. Cada fila del archivo es un diccionario con
-# las metricas de un modelo. Este diccionario tiene un campo para indicar
-# si es el conjunto de entrenamiento o prueba. Por ejemplo:
-#
-# {'type': 'metrics', 'dataset': 'train', 'r2': 0.8, 'mse': 0.7, 'mad': 0.9}
-# {'type': 'metrics', 'dataset': 'test', 'r2': 0.7, 'mse': 0.6, 'mad': 0.8}
-#
+import os
+import json
+import pickle
+import gzip
+import pandas as pd
+
+from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
+from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, make_scorer
+from sklearn.compose import ColumnTransformer
+
+
+# ------------------------
+# Data Handling Functions
+# ------------------------
+
+def load_train_test_data():
+    train_df = pd.read_csv("../files/input/train_data.csv.zip", compression="zip")
+    test_df = pd.read_csv("../files/input/test_data.csv.zip", compression="zip")
+    return train_df, test_df
+
+
+def clean_vehicle_data(df):
+    df = df.copy()
+    df['Age'] = 2021 - df['Year']
+    df.drop(columns=['Car_Name', 'Year'], inplace=True)
+    return df
+
+
+def split_features_target(df):
+    return df.drop(columns=['Selling_Price']), df['Selling_Price']
+
+
+# ------------------------
+# Pipeline Construction
+# ------------------------
+
+def build_regression_pipeline(feature_columns):
+    categorical = ['Fuel_Type', 'Selling_type', 'Transmission']
+    numerical = list(set(feature_columns) - set(categorical))
+
+    preprocessing = ColumnTransformer(transformers=[
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical),
+        ('num', MinMaxScaler(), numerical),
+    ])
+
+    pipeline = Pipeline([
+        ('preprocessing', preprocessing),
+        ('feature_selection', SelectKBest(score_func=f_regression)),
+        ('regressor', LinearRegression())
+    ])
+
+    return pipeline
+
+
+# ------------------------
+# Model Training
+# ------------------------
+
+def perform_grid_search(pipeline, x_train, y_train):
+    param_grid = {
+        'feature_selection__k': [5, 7]
+    }
+
+    scorer = make_scorer(mean_absolute_error, greater_is_better=False)
+    cv = KFold(n_splits=10, shuffle=True, random_state=123)
+
+    grid_search = GridSearchCV(pipeline, param_grid, scoring=scorer, cv=cv, n_jobs=-1)
+    grid_search.fit(x_train, y_train)
+    return grid_search
+
+
+# ------------------------
+# Metrics and Output
+# ------------------------
+
+def calculate_regression_metrics(dataset_name, y_true, y_pred):
+    return {
+        "type": "metrics",
+        "dataset": dataset_name,
+        "r2": r2_score(y_true, y_pred),
+        "mse": mean_squared_error(y_true, y_pred),
+        "mad": mean_absolute_error(y_true, y_pred)
+    }
+
+
+def save_model_to_gzip(estimator, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with gzip.open(output_path, "wb") as f:
+        pickle.dump(estimator, f)
+
+
+def write_metrics_to_json(metrics_list, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        for metrics in metrics_list:
+            f.write(json.dumps(metrics) + "\n")
+
+
+# ------------------------
+# Pipeline Execution
+# ------------------------
+
+def run_regression_pipeline():
+    train_df, test_df = load_train_test_data()
+    train_df = clean_vehicle_data(train_df)
+    test_df = clean_vehicle_data(test_df)
+
+    x_train, y_train = split_features_target(train_df)
+    x_test, y_test = split_features_target(test_df)
+
+    pipeline = build_regression_pipeline(x_train.columns)
+    model = perform_grid_search(pipeline, x_train, y_train)
+
+    save_model_to_gzip(model, "../files/models/model.pkl.gz")
+
+    y_train_pred = model.predict(x_train)
+    y_test_pred = model.predict(x_test)
+
+    metrics = [
+        calculate_regression_metrics("train", y_train, y_train_pred),
+        calculate_regression_metrics("test", y_test, y_test_pred)
+    ]
+
+    write_metrics_to_json(metrics, "../files/output/metrics.json")
+
+
+if __name__ == "__main__":
+    run_regression_pipeline()
