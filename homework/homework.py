@@ -38,9 +38,9 @@ def split_features_target(df):
 # Pipeline Construction
 # ------------------------
 
-def build_regression_pipeline(feature_columns):
+def build_regression_pipeline():
     categorical = ['Fuel_Type', 'Selling_type', 'Transmission']
-    numerical = list(set(feature_columns) - set(categorical))
+    numerical = ['Present_Price', 'Driven_kms', 'Owner', 'Age']
 
     preprocessing = ColumnTransformer(transformers=[
         ('cat', OneHotEncoder(handle_unknown='ignore'), categorical),
@@ -112,7 +112,7 @@ def run_regression_pipeline():
     x_train, y_train = split_features_target(train_df)
     x_test, y_test = split_features_target(test_df)
 
-    pipeline = build_regression_pipeline(x_train.columns)
+    pipeline = build_regression_pipeline()
     model = perform_grid_search(pipeline, x_train, y_train)
 
     save_model_to_gzip(model, "../files/models/model.pkl.gz")
