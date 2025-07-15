@@ -13,10 +13,6 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, m
 from sklearn.compose import ColumnTransformer
 
 
-# ------------------------
-# Data Handling Functions
-# ------------------------
-
 def load_train_test_data():
     train_df = pd.read_csv("../files/input/train_data.csv.zip", compression="zip")
     test_df = pd.read_csv("../files/input/test_data.csv.zip", compression="zip")
@@ -34,35 +30,27 @@ def split_features_target(df):
     return df.drop(columns=['Selling_Price']), df['Selling_Price']
 
 
-# ------------------------
-# Pipeline Construction
-# ------------------------
-
 def build_regression_pipeline():
-    categorical = ['Fuel_Type', 'Selling_type', 'Transmission']
+    categorical = ['Fuel_Type', 'Selling_Type', 'Transmission']
     numerical = ['Present_Price', 'Driven_kms', 'Owner', 'Age']
 
     preprocessing = ColumnTransformer(transformers=[
-        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical),
-        ('num', MinMaxScaler(), numerical),
+        ('categorical_encoder', OneHotEncoder(handle_unknown='ignore'), categorical),
+        ('scaler', MinMaxScaler(), numerical),
     ])
 
     pipeline = Pipeline([
-        ('preprocessing', preprocessing),
-        ('feature_selection', SelectKBest(score_func=f_regression)),
+        ('preprocessor', preprocessing),
+        ('feature_selector', SelectKBest(score_func=f_regression)),
         ('regressor', LinearRegression())
     ])
 
     return pipeline
 
 
-# ------------------------
-# Model Training
-# ------------------------
-
 def perform_grid_search(pipeline, x_train, y_train):
     param_grid = {
-        'feature_selection__k': [5, 7]
+        'feature_selector__k': [5, 7]
     }
 
     scorer = make_scorer(mean_absolute_error, greater_is_better=False)
@@ -73,11 +61,7 @@ def perform_grid_search(pipeline, x_train, y_train):
     return grid_search
 
 
-# ------------------------
-# Metrics and Output
-# ------------------------
-
-def calculate_regression_metrics(dataset_name, y_true, y_pred):
+def calculate_regression_metrics(dataset_name, y_true, y_pred): 
     return {
         "type": "metrics",
         "dataset": dataset_name,
@@ -99,10 +83,6 @@ def write_metrics_to_json(metrics_list, output_path):
         for metrics in metrics_list:
             f.write(json.dumps(metrics) + "\n")
 
-
-# ------------------------
-# Pipeline Execution
-# ------------------------
 
 def run_regression_pipeline():
     train_df, test_df = load_train_test_data()
